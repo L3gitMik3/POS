@@ -1,9 +1,9 @@
 from django.db import models
 
-from core.models import BaseModel
+from core.models import TenantBaseModel, TenantScopedModel
 
 
-class TillSession(models.Model):
+class TillSession(TenantScopedModel):
     terminal_id = models.CharField(max_length=100)
     opened_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="opened_tills")
     opened_at = models.DateTimeField(auto_now_add=True)
@@ -15,8 +15,8 @@ class TillSession(models.Model):
     variance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
 
-class Sale(BaseModel):
-    receipt_number = models.CharField(max_length=50, unique=True)
+class Sale(TenantBaseModel):
+    receipt_number = models.CharField(max_length=50)
     till_session = models.ForeignKey(TillSession, on_delete=models.PROTECT, related_name="sales")
     cashier = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="cashier_sales")
     customer = models.ForeignKey("sales.Customer", null=True, blank=True, on_delete=models.SET_NULL, related_name="sales")
@@ -28,10 +28,16 @@ class Sale(BaseModel):
     tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     version = models.IntegerField(default=0)
-    client_uuid = models.UUIDField(null=True, blank=True, unique=True)
+    client_uuid = models.UUIDField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant_schema", "receipt_number"], name="uniq_receipt_per_tenant"),
+            models.UniqueConstraint(fields=["tenant_schema", "client_uuid"], name="uniq_sale_client_uuid_per_tenant", condition=models.Q(client_uuid__isnull=False)),
+        ]
 
 
-class SaleLine(models.Model):
+class SaleLine(TenantScopedModel):
     sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT, related_name="sale_lines")
     quantity = models.IntegerField(default=0)
@@ -40,25 +46,30 @@ class SaleLine(models.Model):
     line_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
 
 
-class Customer(models.Model):
-    phone_number = models.CharField(max_length=50, unique=True)
+class Customer(TenantScopedModel):
+    phone_number = models.CharField(max_length=50)
     name = models.CharField(max_length=255)
     loyalty_points = models.IntegerField(default=0)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["tenant_schema", "phone_number"], name="uniq_customer_phone_per_tenant"),
+        ]
 
-class LoyaltyRule(models.Model):
+
+class LoyaltyRule(TenantScopedModel):
     points_per_currency_unit = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     redemption_rate = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     is_active = models.BooleanField(default=True)
 
 
-class Return(models.Model):
+class Return(TenantScopedModel):
     original_sale = models.ForeignKey(Sale, on_delete=models.PROTECT, related_name="returns")
     reason = models.CharField(max_length=255, blank=True)
     restock = models.BooleanField(default=True)
 
 
-class ReturnLine(models.Model):
+class ReturnLine(TenantScopedModel):
     return_obj = models.ForeignKey(Return, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT)
     quantity = models.IntegerField(default=0)

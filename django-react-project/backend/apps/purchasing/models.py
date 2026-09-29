@@ -1,7 +1,9 @@
 from django.db import models
 
+from core.models import TenantScopedModel
 
-class Supplier(models.Model):
+
+class Supplier(TenantScopedModel):
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=50, blank=True)
     email = models.EmailField(blank=True)
@@ -9,7 +11,7 @@ class Supplier(models.Model):
     is_active = models.BooleanField(default=True)
 
 
-class PurchaseOrder(models.Model):
+class PurchaseOrder(TenantScopedModel):
     supplier = models.ForeignKey(Supplier, on_delete=models.PROTECT, related_name="purchase_orders")
     status = models.CharField(max_length=32, choices=[
         ("draft", "Draft"),
@@ -22,7 +24,7 @@ class PurchaseOrder(models.Model):
     created_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="purchase_orders")
 
 
-class PurchaseOrderLine(models.Model):
+class PurchaseOrderLine(TenantScopedModel):
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT)
     quantity_ordered = models.IntegerField(default=0)
@@ -30,13 +32,13 @@ class PurchaseOrderLine(models.Model):
     quantity_received_so_far = models.IntegerField(default=0)
 
 
-class GoodsReceivedNote(models.Model):
+class GoodsReceivedNote(TenantScopedModel):
     purchase_order = models.ForeignKey(PurchaseOrder, on_delete=models.PROTECT, related_name="grns")
     received_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="received_grns")
     delivery_note_ref = models.CharField(max_length=255, blank=True)
 
 
-class GRNLine(models.Model):
+class GRNLine(TenantScopedModel):
     grn = models.ForeignKey(GoodsReceivedNote, on_delete=models.CASCADE, related_name="lines")
     product = models.ForeignKey("inventory.Product", on_delete=models.PROTECT)
     quantity_received = models.IntegerField(default=0)

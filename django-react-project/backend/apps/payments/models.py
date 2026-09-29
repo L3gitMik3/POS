@@ -1,7 +1,9 @@
 from django.db import models
 
+from core.models import TenantScopedModel
 
-class MpesaTransaction(models.Model):
+
+class MpesaTransaction(TenantScopedModel):
     sale = models.ForeignKey("sales.Sale", on_delete=models.PROTECT, related_name="mpesa_transactions")
     phone_number = models.CharField(max_length=50)
     amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)

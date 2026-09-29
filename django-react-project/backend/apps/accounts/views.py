@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils.text import slugify
@@ -38,25 +40,47 @@ class SignupView(APIView):
 
     def post(self, request, *args, **kwargs):
         business_name = str(request.data.get("business_name", "")).strip()
+        business_type = str(request.data.get("business_type", "")).strip()
         username = str(request.data.get("username", "")).strip()
         password = request.data.get("password", "")
-        schema_name = slugify(request.data.get("tenant_schema") or business_name).replace("-", "_")
+        schema_base = slugify(business_name).replace("-", "_") or "store"
+        schema_name = ""
+        for _ in range(10):
+            schema_suffix = uuid4().hex[:12]
+            schema_name = f"{schema_base[:50]}_{schema_suffix}"
+            if not Tenant.objects.filter(schema_name=schema_name).exists():
+                break
+        else:
+            return Response({"detail": "Could not allocate a unique store workspace. Please try again."}, status=503)
 
-        if not business_name or not username or len(password) < 8 or not schema_name:
+        if not business_name or not business_type or not username or len(password) < 8 or not schema_name:
             return Response(
-                {"detail": "Business name, username, schema, and an 8-character password are required."},
+                {"detail": "Business name, business type, username, schema, and an 8-character password are required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        if Tenant.objects.filter(schema_name=schema_name).exists():
-            return Response({"detail": "That tenant schema is already registered."}, status=status.HTTP_409_CONFLICT)
+        if len(business_type) > 160:
+            return Response({"detail": "Business type must be 160 characters or fewer."}, status=status.HTTP_400_BAD_REQUEST)
         if User.objects.filter(username=username).exists():
             return Response({"detail": "That username is already registered."}, status=status.HTTP_409_CONFLICT)
 
         with transaction.atomic():
-            tenant = Tenant.objects.create(schema_name=schema_name, slug=schema_name, name=business_name, status="active")
-            owner = User.objects.create_user(username=username, password=password, full_name=business_name, role="owner", is_active=True)
+            tenant = Tenant.objects.create(
+                schema_name=schema_name,
+                slug=schema_name,
+                name=business_name,
+                business_type=business_type,
+                status="active",
+            )
+            owner = User.objects.create_user(
+                username=username,
+                password=password,
+                full_name=business_name,
+                role="owner",
+                is_active=True,
+                tenant_schema=tenant.schema_name,
+            )
 
-        return Response({"tenant_schema": tenant.schema_name, "user_id": str(owner.pk), "username": owner.username}, status=status.HTTP_201_CREATED)
+        return Response({"tenant_schema": tenant.schema_name, "business_type": tenant.business_type, "user_id": str(owner.pk), "username": owner.username}, status=status.HTTP_201_CREATED)
 
 
 class RefreshView(TokenRefreshView):
@@ -98,7 +122,7 @@ class UserListCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, *args, **kwargs):
-        qs = User.objects.filter(is_active=True)
+        qs = User.objects.filter(is_active=True, tenant_schema=request.tenant.schema_name)
         return Response([
             {
                 "id": str(user.pk),
@@ -119,5 +143,6 @@ class UserListCreateView(APIView):
         user = User.objects.create_user(
             username=request.data["username"], password=request.data["password"],
             full_name=request.data.get("full_name", ""), role=request.data["role"], is_active=True,
+            tenant_schema=request.tenant.schema_name,
         )
         return Response({"id": str(user.pk), "username": user.username, "full_name": user.full_name, "role": user.role}, status=status.HTTP_201_CREATED)

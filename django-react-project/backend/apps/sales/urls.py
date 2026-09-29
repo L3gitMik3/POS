@@ -1,6 +1,6 @@
 from django.urls import path
 
-from apps.sales.views import CustomerListCreateView, ReturnCreateView, SaleListCreateView, SaleVoidView, TillCloseView, TillCurrentView, TillOpenView
+from apps.sales.views import CustomerListCreateView, ReturnCreateView, SaleListCreateView, SaleVoidView, TillCloseView, TillCurrentView, TillHistoryView, TillOpenView
 
 urlpatterns = [
     path("", SaleListCreateView.as_view()),
@@ -11,6 +11,7 @@ urlpatterns = [
     path("tills/open/", TillOpenView.as_view()),
     path("tills/current/", TillCurrentView.as_view()),
     path("tills/close/", TillCloseView.as_view()),
+    path("tills/history/", TillHistoryView.as_view()),
     path("returns/", ReturnCreateView.as_view()),
     path("<uuid:sale_id>/void/", SaleVoidView.as_view()),
 ]

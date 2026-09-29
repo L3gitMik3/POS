@@ -10,4 +10,16 @@ class AuditListView(APIView):
 
     def get(self, request):
         entries = AuditLogEntry.objects.select_related("actor").order_by("-created_at")[:200]
-        return Response([{"id": item.id, "actor": str(item.actor_id) if item.actor_id else None, "action": item.action, "model_name": item.model_name, "object_id": item.object_id, "changes": item.changes, "ip_address": item.ip_address, "created_at": item.created_at} for item in entries])
+        return Response([
+            {
+                "id": item.id,
+                "actor": item.actor.username if item.actor else "System",
+                "action": item.action,
+                "model_name": item.model_name,
+                "object_id": item.object_id,
+                "changes": item.changes,
+                "ip_address": item.ip_address,
+                "created_at": item.created_at,
+            }
+            for item in entries
+        ])

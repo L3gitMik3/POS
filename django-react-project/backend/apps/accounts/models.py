@@ -1,7 +1,7 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 
-from core.models import BaseModel
+from core.models import BaseModel, TenantScopedModel
 
 
 class UserManager(BaseUserManager):
@@ -20,6 +20,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     username = models.CharField(max_length=150, unique=True)
     full_name = models.CharField(max_length=255, blank=True)
+    tenant_schema = models.CharField(max_length=63, blank=True, default="")
     role = models.CharField(
         max_length=32,
         choices=[
@@ -43,7 +44,7 @@ class User(AbstractBaseUser, PermissionsMixin, BaseModel):
         return self.username
 
 
-class BusinessSettings(models.Model):
+class BusinessSettings(TenantScopedModel):
     business_name = models.CharField(max_length=255)
     address = models.CharField(max_length=255, blank=True)
     phone = models.CharField(max_length=50, blank=True)
