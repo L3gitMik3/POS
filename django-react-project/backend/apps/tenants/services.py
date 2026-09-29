@@ -11,11 +11,12 @@ from apps.tenants.models import Tenant
 def seed_tenant_defaults(tenant):
     with schema_context(tenant.schema_name):
         default_owner, _ = User.objects.get_or_create(
-            username="owner",
+            username=f"owner-{tenant.schema_name}",
             defaults={
                 "full_name": "Tenant Owner",
                 "role": "owner",
                 "is_active": True,
+                "tenant_schema": tenant.schema_name,
             },
         )
         if not default_owner.has_usable_password():
@@ -41,6 +42,7 @@ def provision_tenant(slug, name, owner_username, owner_password):
                 full_name=name,
                 role="owner",
                 is_active=True,
+                tenant_schema=tenant.schema_name,
             )
             owner.set_password(owner_password)
             owner.save()

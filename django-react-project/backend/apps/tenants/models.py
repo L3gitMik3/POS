@@ -5,6 +5,7 @@ from django_tenants.models import DomainMixin, TenantMixin
 
 class Tenant(TenantMixin):
     name = models.CharField(max_length=255)
+    business_type = models.CharField(max_length=160, blank=True, default="")
     slug = models.CharField(max_length=100, unique=True)
     status = models.CharField(max_length=32, choices=[
         ("provisioning", "Provisioning"),

@@ -1,5 +1,7 @@
 from django.core.management.base import BaseCommand
 
+from apps.inventory.services import low_stock_products
+from apps.notifications.services import notify_low_stock
 from core.tenant_command import TenantCommand
 
 
@@ -11,4 +13,7 @@ class Command(TenantCommand, BaseCommand):
         self.run_for_all_tenants()
 
     def handle_tenant(self, tenant):
-        self.stdout.write(self.style.SUCCESS(f"Low-stock check for {tenant.schema_name}"))
+        products = list(low_stock_products())
+        for product in products:
+            notify_low_stock(product, product.stock_on_hand or 0)
+        self.stdout.write(self.style.SUCCESS(f"Created or refreshed {len(products)} low-stock alert(s) for {tenant.schema_name}."))

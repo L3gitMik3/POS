@@ -17,8 +17,16 @@ class TenantCommand(ABC):
         failures = []
         for tenant in Tenant.objects.filter(status="active"):
             try:
-                with connection.schema_context(tenant.schema_name):
-                    self.handle_tenant(tenant)
+                if connection.vendor == "postgresql":
+                    with connection.schema_context(tenant.schema_name):
+                        self.handle_tenant(tenant)
+                else:
+                    previous_schema = getattr(connection, "schema_name", "public")
+                    try:
+                        connection.set_schema(tenant.schema_name)
+                        self.handle_tenant(tenant)
+                    finally:
+                        connection.set_schema(previous_schema)
             except Exception as exc:  # pragma: no cover - command runner safety
                 logger.exception("TenantCommand failed for %s", tenant.schema_name)
                 failures.append((tenant.schema_name, str(exc)))

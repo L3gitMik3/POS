@@ -1,7 +1,9 @@
 from django.db import models
 
+from core.models import TenantScopedModel
 
-class AuditLogEntry(models.Model):
+
+class AuditLogEntry(TenantScopedModel):
     actor = models.ForeignKey("accounts.User", null=True, blank=True, on_delete=models.SET_NULL, related_name="audit_entries")
     action = models.CharField(max_length=255)
     model_name = models.CharField(max_length=255)
