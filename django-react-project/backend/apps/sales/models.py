@@ -1,9 +1,12 @@
+import uuid
+
 from django.db import models
 
 from core.models import TenantBaseModel, TenantScopedModel
 
 
 class TillSession(TenantScopedModel):
+    public_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     terminal_id = models.CharField(max_length=100)
     opened_by = models.ForeignKey("accounts.User", on_delete=models.PROTECT, related_name="opened_tills")
     opened_at = models.DateTimeField(auto_now_add=True)

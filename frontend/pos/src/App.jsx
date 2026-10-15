@@ -6,6 +6,124 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const API_DEFAULT = "http://localhost:8000";
 
+const BUSINESS_TYPE_GROUPS = [
+  {
+    label: "Retail and everyday trade",
+    options: [
+      "Kiosk / kibanda / informal shop",
+      "Duka / general shop",
+      "Convenience shop",
+      "Mini-market / supermarket",
+      "Hypermarket / department store",
+      "Wholesale shop / cash-and-carry",
+      "Distributors / importers / exporters",
+      "Clothing, shoes and fashion",
+      "Beauty, cosmetics and personal care",
+      "Electronics, phones and accessories",
+      "Furniture, homeware and appliances",
+      "Hardware, building materials and plumbing",
+      "Auto parts, tyres and vehicle accessories",
+      "Pharmacy / chemist / medical supplies",
+      "Books, stationery, printing and office supplies",
+      "Bags, jewellery, gifts and crafts",
+      "Pet supplies and agricultural inputs",
+      "Second-hand / mitumba / resale",
+      "Online store / e-commerce",
+      "Market trader / stall / market vendor",
+      "Other retail or wholesale",
+    ],
+  },
+  {
+    label: "Food, farming and natural resources",
+    options: [
+      "Grocery, greengrocer and fresh produce",
+      "Butchery, fishmonger and poultry shop",
+      "Bakery, cakes and confectionery",
+      "Restaurant, hotel dining and catering",
+      "Café, tea, coffee and juice shop",
+      "Bar, pub and beverage outlet",
+      "Food truck, takeaway and street food",
+      "Food and beverage manufacturing / processing",
+      "Farm, ranch, dairy and livestock",
+      "Crop farming, horticulture and floriculture",
+      "Fisheries and aquaculture",
+      "Agricultural cooperative / produce aggregator",
+      "Agrovet, seeds, fertiliser and farm machinery",
+      "Forestry, timber and wood products",
+      "Mining, quarrying, minerals and related services",
+      "Water, sanitation and waste management",
+    ],
+  },
+  {
+    label: "Manufacturing and construction",
+    options: [
+      "Manufacturing / factory",
+      "Textiles, garments and leather production",
+      "Furniture, carpentry and woodwork",
+      "Metal fabrication and engineering",
+      "Packaging, paper and printing production",
+      "Chemicals, plastics and household products",
+      "Building contractor / civil engineering",
+      "Construction trades and specialist installation",
+      "Architecture, surveying and quantity surveying",
+      "Property development and real estate",
+      "Property rental, facilities and property management",
+      "Energy, solar and electrical services",
+    ],
+  },
+  {
+    label: "Transport, hospitality and travel",
+    options: [
+      "Matatu, bus and passenger transport",
+      "Taxi, ride-hailing and car hire",
+      "Courier, parcel and delivery service",
+      "Trucking, freight and logistics",
+      "Warehouse, cold storage and fulfilment",
+      "Travel agency, tour operator and safari",
+      "Hotel, lodge, guest house and accommodation",
+      "Events, venues and entertainment",
+      "Vehicle sales, servicing and repair",
+      "Fuel station and energy retail",
+    ],
+  },
+  {
+    label: "Health, education and personal services",
+    options: [
+      "Hospital, clinic and medical practice",
+      "Dental, optical and specialist health practice",
+      "Laboratory, diagnostics and health technology",
+      "Veterinary practice and animal care",
+      "School, college, university and training centre",
+      "Childcare, early learning and tutoring",
+      "Salon, barber, spa and wellness",
+      "Gym, sports, fitness and recreation",
+      "Laundry, dry cleaning and cleaning services",
+      "Funeral services and related retail",
+      "Repair, maintenance and household services",
+      "Security and guarding services",
+    ],
+  },
+  {
+    label: "Professional, financial and digital services",
+    options: [
+      "Professional services / consultancy",
+      "Accounting, bookkeeping and tax services",
+      "Legal practice and company secretarial services",
+      "Bank, microfinance, SACCO and credit provider",
+      "Insurance and brokerage",
+      "Mobile money agent and payments business",
+      "Technology, software and IT services",
+      "Telecommunications and internet services",
+      "Digital marketing, advertising and media",
+      "Photography, design and creative studio",
+      "Recruitment, staffing and human resources",
+      "NGO, nonprofit, community organisation or social enterprise",
+      "Government, county or public-sector organisation",
+      "Holding company / enterprise group",
+    ],
+  },
+];
+
 const ENDPOINTS = {
   login: "/api/v1/auth/login/",
   signup: "/api/v1/auth/signup/",
@@ -20,15 +138,20 @@ const ENDPOINTS = {
   tillOpen: "/api/v1/sales/tills/open/",
   tillCurrent: "/api/v1/sales/tills/current/",
   tillClose: "/api/v1/sales/tills/close/",
+  tillHistory: "/api/v1/sales/tills/history/",
 
   sales: "/api/v1/sales/",
   customers: "/api/v1/sales/customers/",
 
   purchases: "/api/v1/purchasing/orders/",
+  suppliers: "/api/v1/purchasing/suppliers/",
+  purchaseReceive: "/api/v1/purchasing/receive/",
   mpesa: "/api/v1/payments/mpesa/initiate/",
 
   reports: "/api/v1/reports/dashboard/",
+  salesReport: "/api/v1/reports/sales/",
   notifications: "/api/v1/notifications/",
+  notificationsRead: "/api/v1/notifications/read/",
   audit: "/api/v1/audit/",
   users: "/api/v1/users/",
 };
@@ -112,18 +235,12 @@ function getStock(p) {
   if (p.quantity_on_hand !== undefined) return Number(p.quantity_on_hand);
   return 0;
 }
-function getStockField(p) {
-  if (p && p.stock_quantity !== undefined) return "stock_quantity";
-  if (p && p.stock !== undefined) return "stock";
-  if (p && p.quantity_on_hand !== undefined) return "quantity_on_hand";
-  return "stock_quantity";
-}
 function getPrice(p) {
   if (p == null) return 0;
   return Number(p.price ?? p.sale_price ?? p.selling_price ?? p.unit_price ?? 0);
 }
 function getReorder(p) {
-  return Number(p?.reorder_level ?? p?.reorder_point ?? 0);
+  return Number(p?.reorder_level ?? p?.reorder_point ?? p?.low_stock_threshold ?? 0);
 }
 
 /* ========================================================================
@@ -131,13 +248,14 @@ function getReorder(p) {
  * ===================================================================== */
 
 export default function App() {
-  const [api, setApi] = useState(API_DEFAULT);
+  const api = API_DEFAULT;
   const [tokens, setTokens] = useState(loadTokens);
   const [view, setView] = useState("dashboard");
   const [mode, setMode] = useState("login");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
   const [till, setTill] = useState(null);
+  const [tillLoaded, setTillLoaded] = useState(false);
 
   const auth = Boolean(tokens?.access);
 
@@ -179,12 +297,13 @@ export default function App() {
     async (path, { method = "GET", body, auth: needAuth = true, retry = true } = {}) => {
       const headers = { Accept: "application/json" };
       if (body !== undefined) headers["Content-Type"] = "application/json";
-      const t = loadTokens();
+      const t = tokens?.access ? tokens : loadTokens();
       let access = t?.access;
       if (needAuth && retry && t?.refresh && (!access || tokenExpired(access))) {
         access = await refreshAccess();
         if (!access) throw new Error("Your session expired. Please sign in again.");
       }
+      if (needAuth && !access) throw new Error("Your session is not authenticated. Please sign in again.");
       if (needAuth && access) headers.Authorization = `Bearer ${access}`;
 
       const res = await fetch(joinUrl(api, path), {
@@ -215,18 +334,21 @@ export default function App() {
       if (res.status === 204) return null;
       return data;
     },
-    [api, refreshAccess]
+    [api, refreshAccess, tokens]
   );
 
   useEffect(() => {
-    if (!auth) { setTill(null); return; }
+    if (!auth) { setTill(null); setTillLoaded(true); return; }
     let cancelled = false;
+    setTillLoaded(false);
     (async () => {
       try {
         const data = await apiFetch(ENDPOINTS.tillCurrent);
         if (!cancelled) setTill(data && data.id ? data : null);
       } catch {
         if (!cancelled) setTill(null);
+      } finally {
+        if (!cancelled) setTillLoaded(true);
       }
     })();
     return () => { cancelled = true; };
@@ -285,8 +407,6 @@ export default function App() {
               setMode={setMode}
               busy={busy}
               onSubmit={handleAuth}
-              api={api}
-              setApi={setApi}
             />
           </div>
         </div>
@@ -299,52 +419,58 @@ export default function App() {
       <style>{css}</style>
       {toast && <Toast toast={toast} />}
 
-      <Topbar api={api} setApi={setApi} till={till} tokens={tokens} onLogout={handleLogout} />
+      <Topbar till={till} tokens={tokens} onLogout={handleLogout} />
 
       <div className="layout">
-        <Sidebar items={NAV} active={view} onSelect={setView} till={till} />
+        {till && <Sidebar items={NAV} active={view} onSelect={setView} till={till} />}
 
-        <section className="content">
-          {!till && !["reports", "users", "inventory"].includes(view) ? (
-            <OpenTill
-              apiFetch={apiFetch}
-              onOpened={(t) => { setTill(t); notify("ok", "Till opened."); }}
-              busy={busy}
-              setBusy={setBusy}
-              notify={notify}
-            />
+        <section className={`content ${!till ? "till-setup-content" : ""}`}>
+          {!tillLoaded ? (
+            <section className="card center-card"><p className="muted">Checking till session…</p></section>
+          ) : !till ? (
+            <>
+              <OpenTill
+                apiFetch={apiFetch}
+                onOpened={(t) => { setTill(t); setView("dashboard"); notify("ok", "Till opened."); }}
+                busy={busy}
+                setBusy={setBusy}
+                notify={notify}
+              />
+              <TillHistory apiFetch={apiFetch} />
+            </>
           ) : (
             <>
-              {view === "dashboard" && <Dashboard apiFetch={apiFetch} till={till} onNavigate={setView} />}
+              {view === "dashboard" && (
+                <Dashboard
+                  apiFetch={apiFetch}
+                  till={till}
+                  onNavigate={setView}
+                  notify={notify}
+                  onTillClosed={() => setTill(null)}
+                />
+              )}
               {view === "pos" && (
                 <POS apiFetch={apiFetch} till={till} notify={notify} onCompleted={() => notify("ok", "Sale completed.")} />
               )}
               {view === "sales" && <SalesList apiFetch={apiFetch} notify={notify} />}
               {view === "inventory" && <InventoryPage apiFetch={apiFetch} notify={notify} />}
               {view === "purchasing" && (
-                <SimpleList title="Purchasing Orders" endpoint={ENDPOINTS.purchases} apiFetch={apiFetch} notify={notify} />
+                <PurchasingPage apiFetch={apiFetch} notify={notify} />
               )}
               {view === "reports" && <Reports apiFetch={apiFetch} notify={notify} />}
               {view === "customers" && (
-                <SimpleList
-                  title="Customers"
-                  endpoint={ENDPOINTS.customers}
-                  apiFetch={apiFetch}
-                  notify={notify}
-                  columns={["id", "name", "phone_number", "loyalty_points"]}
-                />
+                <CustomersPage apiFetch={apiFetch} notify={notify} />
               )}
               {view === "notifications" && (
-                <SimpleList title="Notifications" endpoint={ENDPOINTS.notifications} apiFetch={apiFetch} notify={notify} />
+                <NotificationsPage apiFetch={apiFetch} notify={notify} />
               )}
               {view === "audit" && (
-                <SimpleList title="Audit Log" endpoint={ENDPOINTS.audit} apiFetch={apiFetch} notify={notify} />
+                <AuditPage apiFetch={apiFetch} />
               )}
               {view === "users" && (
                 <SimpleList title="Users" endpoint={ENDPOINTS.users} apiFetch={apiFetch} notify={notify} />
               )}
 
-              {till && <CloseTillBar till={till} apiFetch={apiFetch} notify={notify} onClosed={() => setTill(null)} />}
             </>
           )}
         </section>
@@ -380,7 +506,7 @@ function Toast({ toast }) {
   return <div className={`toast toast-${toast.kind}`} role="status">{toast.text}</div>;
 }
 
-function Topbar({ api, setApi, till, tokens, onLogout }) {
+function Topbar({ till, tokens, onLogout }) {
   return (
     <header className="topbar">
       <div className="brand">
@@ -393,15 +519,11 @@ function Topbar({ api, setApi, till, tokens, onLogout }) {
           <div className="till-badge">
             <span className="till-dot" />
             <div>
-              <strong>Till #{till.id}</strong>
-              <span>{till.terminal_id || "terminal"}</span>
+              <strong>Till #{till.terminal_id || "terminal"}</strong>
+              <span>Session #{till.id}</span>
             </div>
           </div>
         )}
-        <label className="api-control">
-          <span>API base URL</span>
-          <input type="url" value={api} onChange={(e) => setApi(e.target.value)} />
-        </label>
         <button className="ghost" onClick={onLogout}>Sign out</button>
       </div>
     </header>
@@ -421,8 +543,10 @@ function Sidebar({ items, active, onSelect, till }) {
       {till && (
         <div className="sidebar-foot">
           <span className="eyebrow">Cashier session</span>
-          <strong>Till #{till.id}</strong>
-          <span className="muted-small">Opened {new Date(till.opened_at || Date.now()).toLocaleString()}</span>
+          <strong>Till #{till.terminal_id || "terminal"}</strong>
+          <span className="muted-small">
+            Session #{till.id} · Opened {new Date(till.opened_at || Date.now()).toLocaleString()}
+          </span>
         </div>
       )}
     </aside>
@@ -452,12 +576,13 @@ function Modal({ open, title: heading, onClose, children, wide }) {
  * Auth
  * ===================================================================== */
 
-function AuthForm({ mode, setMode, busy, onSubmit, api, setApi }) {
+function AuthForm({ mode, setMode, busy, onSubmit }) {
   const [form, setForm] = useState({
     business_name: "",
+    business_type: "",
+    business_type_other: "",
     username: "",
     password: "",
-    tenant_schema: "",
   });
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
   const isLogin = mode === "login";
@@ -465,12 +590,14 @@ function AuthForm({ mode, setMode, busy, onSubmit, api, setApi }) {
   const submit = (e) => {
     e.preventDefault();
     const payload = isLogin
-      ? { username: form.username, password: form.password, tenant_schema: form.tenant_schema }
+      ? { username: form.username, password: form.password }
       : {
           business_name: form.business_name,
+          business_type: form.business_type === "Other / not listed"
+            ? form.business_type_other.trim()
+            : form.business_type,
           username: form.username,
           password: form.password,
-          tenant_schema: form.tenant_schema || undefined,
         };
     onSubmit(payload);
   };
@@ -478,7 +605,29 @@ function AuthForm({ mode, setMode, busy, onSubmit, api, setApi }) {
   return (
     <form onSubmit={submit} className="auth-form">
       {!isLogin && (
-        <Field label="Business name" value={form.business_name} onChange={set("business_name")} required />
+        <>
+          <Field label="Business name" value={form.business_name} onChange={set("business_name")} required />
+          <label className="field">
+            <span>Business type</span>
+            <select value={form.business_type} onChange={set("business_type")} required>
+              <option value="">Select the closest match</option>
+              {BUSINESS_TYPE_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.options.map((option) => <option key={option} value={option}>{option}</option>)}
+                </optgroup>
+              ))}
+              <option value="Other / not listed">Other / not listed</option>
+            </select>
+          </label>
+          {form.business_type === "Other / not listed" && (
+            <Field
+              label="Describe your business type"
+              value={form.business_type_other}
+              onChange={set("business_type_other")}
+              required
+            />
+          )}
+        </>
       )}
       <Field label="Username" value={form.username} onChange={set("username")} required autoComplete="username" />
       <Field
@@ -490,15 +639,6 @@ function AuthForm({ mode, setMode, busy, onSubmit, api, setApi }) {
         minLength={isLogin ? undefined : 8}
         autoComplete={isLogin ? "current-password" : "new-password"}
       />
-      <Field
-        label="Tenant schema"
-        value={form.tenant_schema}
-        onChange={set("tenant_schema")}
-        required={isLogin}
-        placeholder={isLogin ? "e.g. westlands_store" : "Optional"}
-      />
-      <Field label="API base URL" type="url" value={api} onChange={(e) => setApi(e.target.value)} />
-
       <button className="primary wide" disabled={busy}>
         {busy ? "Please wait…" : isLogin ? "Sign in" : "Create account"}
       </button>
@@ -539,10 +679,10 @@ function OpenTill({ apiFetch, onOpened, busy, setBusy, notify }) {
       <span className="eyebrow">CASHIER</span>
       <h2>Open a till to start selling</h2>
       <p className="muted">
-        A till session is required before creating sales. Enter the terminal ID and the cash float you are starting with.
+        A till session is required before creating sales. Use a stable till number (for example, TILL-01) for this checkout; each opening creates a separate session.
       </p>
       <form onSubmit={submit} className="form-tight">
-        <Field label="Terminal ID" value={form.terminal_id} onChange={set("terminal_id")} required />
+        <Field label="Till number / terminal ID" value={form.terminal_id} onChange={set("terminal_id")} required />
         <Field
           label="Opening float (KES)"
           type="number"
@@ -598,7 +738,7 @@ function CloseTillBar({ till, apiFetch, notify, onClosed }) {
  * Dashboard
  * ===================================================================== */
 
-function Dashboard({ apiFetch, till, onNavigate }) {
+function Dashboard({ apiFetch, till, onNavigate, notify, onTillClosed }) {
   const [metrics, setMetrics] = useState(null);
   useEffect(() => {
     let cancel = false;
@@ -619,25 +759,82 @@ function Dashboard({ apiFetch, till, onNavigate }) {
   ];
 
   return (
+    <>
+      <section className="card">
+        <div className="section-intro">
+          <span className="eyebrow">OVERVIEW</span>
+          <h2>Dashboard</h2>
+          <p>{till ? `Till #${till.terminal_id || "terminal"} is open.` : "Open a till to begin selling."}</p>
+        </div>
+        <div className="stat-grid">
+          {cards.map((c) => (
+            <div key={c.k} className="stat">
+              <span className="eyebrow">{c.label}</span>
+              <strong>{metrics && metrics[c.k] !== undefined ? metrics[c.k] : "—"}</strong>
+            </div>
+          ))}
+        </div>
+        <div className="quick-actions">
+          <button className="primary" onClick={() => onNavigate("pos")}>Open POS</button>
+          <button className="secondary" onClick={() => onNavigate("inventory")}>Inventory</button>
+          <button className="secondary" onClick={() => onNavigate("sales")}>Sales</button>
+        </div>
+      </section>
+      <CloseTillBar till={till} apiFetch={apiFetch} notify={notify} onClosed={onTillClosed} />
+      <TillHistory apiFetch={apiFetch} />
+    </>
+  );
+}
+
+function TillHistory({ apiFetch }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await apiFetch(ENDPOINTS.tillHistory);
+      setRows(listOf(data));
+    } catch (e) {
+      setError(e.message || "Could not load till history.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const date = (value) => value ? new Date(value).toLocaleString() : "—";
+  const columns = [
+    { key: "terminal_id", label: "Till" },
+    { key: "status", label: "Status", render: (row) => title(row.status) },
+    { key: "opened_at", label: "Opened", render: (row) => date(row.opened_at) },
+    { key: "opened_by", label: "Opened by" },
+    { key: "opening_float", label: "Opening float", render: (row) => money(row.opening_float) },
+    { key: "closed_at", label: "Closed", render: (row) => date(row.closed_at) },
+    { key: "closed_by", label: "Closed by" },
+    { key: "sales_count", label: "Sales" },
+    { key: "cash_sales_total", label: "Cash sales", render: (row) => money(row.cash_sales_total) },
+    { key: "counted_cash", label: "Counted cash", render: (row) => row.counted_cash == null ? "—" : money(row.counted_cash) },
+    { key: "expected_cash", label: "Expected cash", render: (row) => money(row.expected_cash) },
+    { key: "variance", label: "Variance", render: (row) => row.variance == null ? "—" : money(row.variance) },
+  ];
+
+  return (
     <section className="card">
-      <div className="section-intro">
-        <span className="eyebrow">OVERVIEW</span>
-        <h2>Dashboard</h2>
-        <p>{till ? `Till #${till.id} is open.` : "Open a till to begin selling."}</p>
+      <div className="list-head">
+        <div className="section-intro">
+          <span className="eyebrow">CASHIER</span>
+          <h2>Till session history</h2>
+          <p>Opening and closing records are retained for reconciliation.</p>
+        </div>
+        <div className="list-tools">
+          <button className="ghost" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+        </div>
       </div>
-      <div className="stat-grid">
-        {cards.map((c) => (
-          <div key={c.k} className="stat">
-            <span className="eyebrow">{c.label}</span>
-            <strong>{metrics && metrics[c.k] !== undefined ? metrics[c.k] : "—"}</strong>
-          </div>
-        ))}
-      </div>
-      <div className="quick-actions">
-        <button className="primary" onClick={() => onNavigate("pos")}>Open POS</button>
-        <button className="secondary" onClick={() => onNavigate("inventory")}>Inventory</button>
-        <button className="secondary" onClick={() => onNavigate("sales")}>Sales</button>
-      </div>
+      {error ? <p className="form-error">{error}</p> : loading ? <p className="muted">Loading session history…</p> : !rows.length ? <p className="muted">No till sessions recorded yet.</p> : <Table columns={columns} rows={rows} />}
     </section>
   );
 }
@@ -676,11 +873,12 @@ function POS({ apiFetch, till, notify, onCompleted }) {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return products.slice(0, 40);
+    if (!q) return [];
     return products.filter((p) => {
       const name = (p.name || "").toLowerCase();
-      const sku = (p.sku || p.barcode || "").toString().toLowerCase();
-      return name.includes(q) || sku.includes(q);
+      const sku = (p.sku || "").toString().toLowerCase();
+      const barcode = (p.barcode || "").toString().toLowerCase();
+      return name.includes(q) || sku.includes(q) || barcode.includes(q);
     }).slice(0, 40);
   }, [products, query]);
 
@@ -806,6 +1004,8 @@ function POS({ apiFetch, till, notify, onCompleted }) {
         />
         {loading ? (
           <p className="muted">Loading products…</p>
+        ) : !query.trim() ? (
+          <p className="muted">Search by product name, SKU, or barcode to find items.</p>
         ) : (
           <ul className="product-list">
             {filtered.map((p) => (
@@ -819,7 +1019,7 @@ function POS({ apiFetch, till, notify, onCompleted }) {
                 </button>
               </li>
             ))}
-            {!filtered.length && <li className="muted">No matches.</li>}
+            {!filtered.length && <li className="muted">No products match that name, SKU, or barcode.</li>}
           </ul>
         )}
       </section>
@@ -936,20 +1136,27 @@ function InventoryPage({ apiFetch, notify }) {
   const [q, setQ] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [modal, setModal] = useState(null); // "create" | "edit" | "stock" | null
   const [editing, setEditing] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleteReason, setDeleteReason] = useState("");
+  const [deleteNote, setDeleteNote] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
     try {
       const [p, c] = await Promise.all([
-        apiFetch(ENDPOINTS.products).catch(() => []),
-        apiFetch(ENDPOINTS.categories).catch(() => []),
+        apiFetch(ENDPOINTS.products),
+        apiFetch(ENDPOINTS.categories),
       ]);
       setRows(listOf(p));
       setCategories(listOf(c));
     } catch (e) {
+      setLoadError(e.message || "Could not load inventory.");
       notify("err", e.message || "Could not load inventory.");
     } finally {
       setLoading(false);
@@ -983,13 +1190,24 @@ function InventoryPage({ apiFetch, notify }) {
   };
 
   const removeProduct = async (p) => {
+    if (!deleteReason) return setDeleteError("Select a reason before archiving this product.");
+    if (deleteReason === "other" && !deleteNote.trim()) return setDeleteError("Explain why the product is being archived.");
+    setDeleting(true);
+    setDeleteError("");
     try {
-      await apiFetch(`${ENDPOINTS.products}${p.id}/`, { method: "DELETE" });
-      notify("ok", "Product deleted.");
+      await apiFetch(`${ENDPOINTS.products}${p.id}/`, {
+        method: "DELETE",
+        body: { reason: deleteReason, note: deleteNote.trim() },
+      });
+      notify("ok", "Product archived and reason recorded.");
       setConfirmDelete(null);
+      setDeleteReason("");
+      setDeleteNote("");
       loadAll();
     } catch (e) {
-      notify("err", e.message || "Could not delete product.");
+      setDeleteError(e.message || "Could not archive product.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1012,6 +1230,7 @@ function InventoryPage({ apiFetch, notify }) {
         </div>
       </div>
 
+      {loadError && <p className="form-error">{loadError}</p>}
       <Table
         columns={[
           { key: "name", label: "Product" },
@@ -1035,7 +1254,7 @@ function InventoryPage({ apiFetch, notify }) {
               <div className="row-actions">
                 <button className="ghost small" onClick={() => { setEditing(r); setModal("edit"); }}>Edit</button>
                 <button className="ghost small" onClick={() => { setEditing(r); setModal("stock"); }}>Stock</button>
-                <button className="ghost small danger" onClick={() => setConfirmDelete(r)}>Delete</button>
+                <button className="ghost small danger" onClick={() => { setConfirmDelete(r); setDeleteReason(""); setDeleteNote(""); setDeleteError(""); }}>Archive</button>
               </div>
             ),
           },
@@ -1071,10 +1290,22 @@ function InventoryPage({ apiFetch, notify }) {
       />
 
       <Modal open={Boolean(confirmDelete)} title="Delete product" onClose={() => setConfirmDelete(null)}>
-        <p>Are you sure you want to delete <strong>{confirmDelete?.name}</strong>? This cannot be undone.</p>
+        <p><strong>{confirmDelete?.name}</strong> will be archived and hidden from the catalog. The record is retained for sales history.</p>
+        <label className="field">
+          <span>Reason for archiving</span>
+          <select value={deleteReason} onChange={(e) => setDeleteReason(e.target.value)} required>
+            <option value="">Choose a reason</option>
+            <option value="discontinued">Discontinued</option>
+            <option value="duplicate">Duplicate listing</option>
+            <option value="incorrect_item">Incorrect product record</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        {deleteReason === "other" && <Field label="Explain why" value={deleteNote} onChange={(e) => setDeleteNote(e.target.value)} required />}
+        {deleteError && <p className="form-error">{deleteError}</p>}
         <div className="modal-actions">
-          <button className="ghost" onClick={() => setConfirmDelete(null)}>Cancel</button>
-          <button className="danger-btn" onClick={() => removeProduct(confirmDelete)}>Delete</button>
+          <button className="ghost" onClick={() => setConfirmDelete(null)} disabled={deleting}>Cancel</button>
+          <button className="danger-btn" onClick={() => removeProduct(confirmDelete)} disabled={deleting}>{deleting ? "Archiving…" : "Archive product"}</button>
         </div>
       </Modal>
     </section>
@@ -1088,6 +1319,8 @@ function InventoryPage({ apiFetch, notify }) {
 function ProductModal({ open, mode, product, categories, apiFetch, notify, onClose, onSaved, onCategoryCreated }) {
   const isEdit = mode === "edit";
   const [form, setForm] = useState(emptyProduct());
+  const [changeReason, setChangeReason] = useState("routine_update");
+  const [changeNote, setChangeNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1096,6 +1329,8 @@ function ProductModal({ open, mode, product, categories, apiFetch, notify, onClo
     if (!open) return;
     setError("");
     if (isEdit && product) {
+      setChangeReason("routine_update");
+      setChangeNote("");
       setForm({
         name: product.name || "",
         sku: product.sku || "",
@@ -1111,6 +1346,8 @@ function ProductModal({ open, mode, product, categories, apiFetch, notify, onClo
         is_active: product.is_active ?? true,
       });
     } else {
+      setChangeReason("routine_update");
+      setChangeNote("");
       setForm(emptyProduct());
     }
   }, [open, isEdit, product]);
@@ -1140,6 +1377,11 @@ function ProductModal({ open, mode, product, categories, apiFetch, notify, onClo
       is_active: form.is_active,
     };
     if (!isEdit) payload.stock_quantity = Number(form.stock_quantity || 0);
+    if (isEdit) {
+      payload.change_reason = changeReason;
+      payload.change_note = changeNote.trim();
+      if (changeReason === "other" && !payload.change_note) return setError("Explain the change when the reason is Other.");
+    }
 
     setSaving(true);
     try {
@@ -1177,8 +1419,8 @@ function ProductModal({ open, mode, product, categories, apiFetch, notify, onClo
         <label className="field">
           <span>Category</span>
           <div className="row-inline">
-            <select value={form.category} onChange={set("category")}>
-              <option value="">— none —</option>
+            <select value={form.category} onChange={set("category")} required>
+              <option value="" disabled>Select a category</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -1196,6 +1438,22 @@ function ProductModal({ open, mode, product, categories, apiFetch, notify, onClo
           <Field label="Opening stock" type="number" min="0" value={form.stock_quantity} onChange={set("stock_quantity")} />
         )}
         <Field label="Reorder level" type="number" min="0" value={form.reorder_level} onChange={set("reorder_level")} />
+
+        {isEdit && (
+          <>
+            <label className="field">
+              <span>Reason for product change</span>
+              <select value={changeReason} onChange={(e) => setChangeReason(e.target.value)} required>
+                <option value="routine_update">Routine product update</option>
+                <option value="pricing_update">Price or tax update</option>
+                <option value="barcode_correction">Barcode or SKU correction</option>
+                <option value="data_correction">Product data correction</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            {changeReason === "other" && <Field label="Explain the change" value={changeNote} onChange={(e) => setChangeNote(e.target.value)} required />}
+          </>
+        )}
 
         <label className="field checkbox">
           <input type="checkbox" checked={form.is_active} onChange={set("is_active")} />
@@ -1245,6 +1503,7 @@ function StockModal({ open, product, apiFetch, notify, onClose, onSaved }) {
   const [direction, setDirection] = useState("in");
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1253,6 +1512,7 @@ function StockModal({ open, product, apiFetch, notify, onClose, onSaved }) {
       setDirection("in");
       setQuantity("");
       setReason("");
+      setNote("");
       setError("");
     }
   }, [open]);
@@ -1268,14 +1528,19 @@ function StockModal({ open, product, apiFetch, notify, onClose, onSaved }) {
     setError("");
     if (qty <= 0) return setError("Quantity must be greater than zero.");
     if (projected < 0) return setError("Cannot reduce stock below zero.");
+    if (!reason) return setError("Select why the stock is changing.");
+    if (reason === "other" && !note.trim()) return setError("Explain the stock change when the reason is Other.");
 
-    const stockField = getStockField(product);
-    const body = { [stockField]: projected };
+    const body = {
+      product_id: product.id,
+      counted_quantity: projected,
+      reason,
+      note: note.trim(),
+    };
 
     setSaving(true);
     try {
-      /* Try the product PATCH first — works whether the model has stock on Product. */
-      await apiFetch(`${ENDPOINTS.products}${product.id}/`, { method: "PATCH", body });
+      await apiFetch(ENDPOINTS.stockMovements, { method: "POST", body });
 
       notify("ok", `Stock updated (${currentStock} → ${projected}).`);
       onSaved();
@@ -1317,12 +1582,24 @@ function StockModal({ open, product, apiFetch, notify, onClose, onSaved }) {
           required
         />
 
-        <Field
-          label="Reason (optional)"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Restock, damage, correction…"
-        />
+        <label className="field">
+          <span>Reason for stock change</span>
+          <select value={reason} onChange={(e) => setReason(e.target.value)} required>
+            <option value="">Choose a reason</option>
+            <option value="restock">Restock / delivery</option>
+            <option value="sale">Sale correction / manual sale</option>
+            <option value="damage">Damaged goods</option>
+            <option value="expiry">Expired goods</option>
+            <option value="theft">Loss / theft</option>
+            <option value="correction">Stock count correction</option>
+            <option value="customer_return">Customer return</option>
+            <option value="transfer">Transfer</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        {(reason === "other" || reason === "damage" || reason === "expiry" || reason === "theft") && (
+          <Field label={reason === "other" ? "Explain the stock change" : "Notes (optional)"} value={note} onChange={(e) => setNote(e.target.value)} required={reason === "other"} />
+        )}
 
         {error && <div className="form-error grid-full">{error}</div>}
 
@@ -1392,6 +1669,453 @@ function SalesList({ apiFetch, notify }) {
   );
 }
 
+function CustomersPage({ apiFetch, notify }) {
+  const [rows, setRows] = useState([]);
+  const [query, setQuery] = useState("");
+  const [form, setForm] = useState({ name: "", phone_number: "" });
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setRows(listOf(await apiFetch(ENDPOINTS.customers)));
+    } catch (e) {
+      setError(e.message || "Could not load customers.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await apiFetch(ENDPOINTS.customers, { method: "POST", body: form });
+      notify("ok", "Customer saved.");
+      setForm({ name: "", phone_number: "" });
+      await load();
+    } catch (err) {
+      setError(err.message || "Could not save customer.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filtered = rows.filter((row) =>
+    `${row.name} ${row.phone_number}`.toLowerCase().includes(query.trim().toLowerCase())
+  );
+
+  return (
+    <>
+      <section className="card">
+        <div className="section-intro">
+          <span className="eyebrow">CUSTOMER DIRECTORY</span>
+          <h2>Customers</h2>
+          <p>Save customer details for lookup at checkout and review their paid sales.</p>
+        </div>
+        <form className="form-grid" onSubmit={submit}>
+          <Field label="Customer name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
+          <Field label="Phone number" type="tel" value={form.phone_number} onChange={(e) => setForm({ ...form, phone_number: e.target.value })} required />
+          {error && <div className="form-error grid-full">{error}</div>}
+          <button className="primary grid-full" disabled={saving}>{saving ? "Saving…" : "Save customer"}</button>
+        </form>
+      </section>
+      <section className="card">
+        <div className="list-head">
+          <div className="section-intro"><h2>Customer records</h2><p>{rows.length} customer{rows.length === 1 ? "" : "s"}</p></div>
+          <div className="list-tools">
+            <input placeholder="Search name or phone…" value={query} onChange={(e) => setQuery(e.target.value)} />
+            <button className="ghost" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+          </div>
+        </div>
+        {error && !rows.length ? <p className="form-error">{error}</p> : loading ? <p className="muted">Loading customers…</p> : !filtered.length ? <p className="muted">{rows.length ? "No customers match that search." : "No customers yet. Add one above or save a customer during checkout."}</p> : (
+          <Table columns={[
+            { key: "name", label: "Name" },
+            { key: "phone_number", label: "Phone" },
+            { key: "sales_count", label: "Completed sales" },
+            { key: "total_spent", label: "Paid sales", render: (row) => money(row.total_spent) },
+            { key: "loyalty_points", label: "Loyalty points" },
+          ]} rows={filtered} />
+        )}
+      </section>
+    </>
+  );
+}
+
+function AuditPage({ apiFetch }) {
+  const [rows, setRows] = useState([]);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setRows(listOf(await apiFetch(ENDPOINTS.audit)));
+    } catch (e) {
+      setError(e.message || "Could not load the audit log.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+  useEffect(() => { load(); }, [load]);
+
+  const filtered = rows.filter((row) =>
+    `${row.actor} ${row.action} ${row.model_name} ${row.object_id} ${JSON.stringify(row.changes || {})}`.toLowerCase().includes(query.trim().toLowerCase())
+  );
+  const actionLabel = (action) => ({
+    added: "Added",
+    sold: "Sold",
+    deleted: "Deleted / archived",
+    stock_added: "Stock added",
+    stock_removed: "Stock removed",
+    sale_voided: "Sale voided",
+    received: "Goods received",
+    open: "Till opened",
+    close: "Till closed",
+    updated: "Updated",
+  }[action] || title(action));
+  const flattenChanges = (value, prefix = "") => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return Object.entries(value).flatMap(([key, nested]) => flattenChanges(nested, prefix ? `${prefix} · ${title(key)}` : title(key)));
+    }
+    if (Array.isArray(value)) return [[prefix, value.map((item) => String(item)).join(", ")]];
+    const isReason = /(^| · )(Reason|Deletion type)$/.test(prefix);
+    return [[prefix, isReason && value ? title(String(value)) : String(value ?? "—")]];
+  };
+
+  return (
+    <section className="card">
+      <div className="list-head">
+        <div className="section-intro"><span className="eyebrow">ACTIVITY</span><h2>Audit log</h2><p>Records are created for sales, customers, stock changes, and purchasing activity.</p></div>
+        <div className="list-tools">
+          <input placeholder="Search activity…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <button className="ghost" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+        </div>
+      </div>
+      {error ? <p className="form-error">{error}</p> : loading ? <p className="muted">Loading audit events…</p> : !filtered.length ? <p className="muted">{rows.length ? "No audit events match that search." : "No recorded activity yet. New changes will appear here."}</p> : (
+        <Table columns={[
+          { key: "created_at", label: "When", render: (row) => row.created_at ? new Date(row.created_at).toLocaleString() : "—" },
+          { key: "actor", label: "User" },
+          { key: "action", label: "Action", render: (row) => actionLabel(row.action) },
+          { key: "model_name", label: "Record type" },
+          { key: "object_id", label: "Record ID" },
+          {
+            key: "changes",
+            label: "Changes",
+            render: (row) => {
+              const changes = row.changes && typeof row.changes === "object" ? flattenChanges(row.changes) : [];
+              if (!changes.length) return "—";
+              return (
+                <ul className="audit-changes">
+                  {changes.map(([key, value], index) => (
+                    <li key={`${key}-${index}`}><strong>{key}:</strong> {value}</li>
+                  ))}
+                </ul>
+              );
+            },
+          },
+          { key: "ip_address", label: "IP" },
+        ]} rows={filtered} />
+      )}
+    </section>
+  );
+}
+
+function NotificationsPage({ apiFetch, notify }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setRows(listOf(await apiFetch(ENDPOINTS.notifications)));
+    } catch (e) {
+      setError(e.message || "Could not load notifications.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+  useEffect(() => { load(); }, [load]);
+
+  const markRead = async (ids) => {
+    if (!ids.length) return;
+    try {
+      await apiFetch(ENDPOINTS.notificationsRead, { method: "POST", body: { ids } });
+      const readAt = new Date().toISOString();
+      setRows((current) => current.map((row) => ids.includes(row.id) ? { ...row, read_at: readAt } : row));
+      notify("ok", "Notification marked as read.");
+    } catch (e) {
+      notify("err", e.message || "Could not update notification.");
+    }
+  };
+
+  const unreadIds = rows.filter((row) => !row.read_at).map((row) => row.id);
+
+  return (
+    <section className="card">
+      <div className="list-head">
+        <div className="section-intro"><span className="eyebrow">ALERTS</span><h2>Notifications</h2><p>{unreadIds.length} unread alert{unreadIds.length === 1 ? "" : "s"}</p></div>
+        <div className="list-tools">
+          {unreadIds.length > 0 && <button className="secondary" onClick={() => markRead(unreadIds)}>Mark all read</button>}
+          <button className="ghost" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+        </div>
+      </div>
+      {error ? <p className="form-error">{error}</p> : loading ? <p className="muted">Loading notifications…</p> : !rows.length ? <p className="muted">No alerts yet. Low-stock alerts are created automatically when stock reaches its reorder level.</p> : (
+        <Table columns={[
+          { key: "created_at", label: "When", render: (row) => row.created_at ? new Date(row.created_at).toLocaleString() : "—" },
+          { key: "type", label: "Type", render: (row) => title(row.type) },
+          { key: "message", label: "Message" },
+          { key: "reference_id", label: "Related record" },
+          { key: "read_at", label: "Status", render: (row) => row.read_at ? "Read" : "Unread" },
+          { key: "action", label: "Action", render: (row) => row.read_at ? "—" : <button className="ghost small" onClick={() => markRead([row.id])}>Mark read</button> },
+        ]} rows={rows} />
+      )}
+    </section>
+  );
+}
+
+function PurchasingPage({ apiFetch, notify }) {
+  const [orders, setOrders] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [supplierForm, setSupplierForm] = useState({ name: "", phone: "", email: "" });
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [supplierSaving, setSupplierSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [draft, setDraft] = useState({ supplier: "", expected_date: "", lines: [] });
+  const [receiving, setReceiving] = useState(null);
+  const [receiptLines, setReceiptLines] = useState([]);
+  const [deliveryNoteRef, setDeliveryNoteRef] = useState("");
+  const [receivingBusy, setReceivingBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [orderData, supplierData, productData] = await Promise.all([
+        apiFetch(ENDPOINTS.purchases),
+        apiFetch(ENDPOINTS.suppliers),
+        apiFetch(ENDPOINTS.products),
+      ]);
+      setOrders(listOf(orderData));
+      setSuppliers(listOf(supplierData));
+      setProducts(listOf(productData));
+    } catch (e) {
+      setError(e.message || "Could not load purchasing records.");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiFetch]);
+  useEffect(() => { load(); }, [load]);
+
+  const addSupplier = async (e) => {
+    e.preventDefault();
+    setSupplierSaving(true);
+    setError("");
+    try {
+      const supplier = await apiFetch(ENDPOINTS.suppliers, { method: "POST", body: supplierForm });
+      setSuppliers((current) => [...current, supplier].sort((a, b) => a.name.localeCompare(b.name)));
+      setSupplierForm({ name: "", phone: "", email: "" });
+      setShowSupplierForm(false);
+      notify("ok", "Supplier saved.");
+    } catch (e2) {
+      setError(e2.message || "Could not save supplier.");
+    } finally {
+      setSupplierSaving(false);
+    }
+  };
+
+  const startOrder = () => {
+    setError("");
+    setDraft({
+      supplier: suppliers[0] ? String(suppliers[0].id) : "",
+      expected_date: "",
+      lines: products.length ? [{ product_id: String(products[0].id), quantity_ordered: "1", unit_cost: products[0].cost_price || "0" }] : [],
+    });
+    setCreating(true);
+  };
+
+  const updateDraftLine = (index, key, value) => {
+    setDraft((current) => ({
+      ...current,
+      lines: current.lines.map((line, i) => {
+        if (i !== index) return line;
+        if (key === "product_id") {
+          const product = products.find((item) => String(item.id) === String(value));
+          return { ...line, product_id: value, unit_cost: product?.cost_price || "0" };
+        }
+        return { ...line, [key]: value };
+      }),
+    }));
+  };
+
+  const createOrder = async (e) => {
+    e.preventDefault();
+    setSavingOrder(true);
+    setError("");
+    try {
+      await apiFetch(ENDPOINTS.purchases, {
+        method: "POST",
+        body: {
+          supplier: draft.supplier,
+          expected_date: draft.expected_date || undefined,
+          lines: draft.lines.map((line) => ({
+            product_id: line.product_id,
+            quantity_ordered: Number(line.quantity_ordered),
+            unit_cost: Number(line.unit_cost),
+          })),
+        },
+      });
+      notify("ok", "Purchase order created.");
+      setCreating(false);
+      await load();
+    } catch (e2) {
+      setError(e2.message || "Could not create purchase order.");
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  const startReceiving = (order) => {
+    setReceiving(order);
+    setDeliveryNoteRef("");
+    setReceiptLines(order.lines.filter((line) => line.quantity_remaining > 0).map((line) => ({
+      product_id: line.product_id,
+      product: line.product,
+      quantity_remaining: line.quantity_remaining,
+      quantity_received: "",
+    })));
+  };
+
+  const receiveOrder = async (e) => {
+    e.preventDefault();
+    const lines = receiptLines.filter((line) => Number(line.quantity_received) > 0).map((line) => ({
+      product_id: line.product_id,
+      quantity_received: Number(line.quantity_received),
+    }));
+    if (!lines.length) return setError("Enter at least one received quantity.");
+    setReceivingBusy(true);
+    setError("");
+    try {
+      await apiFetch(ENDPOINTS.purchaseReceive, {
+        method: "POST",
+        body: { purchase_order_id: receiving.id, lines, delivery_note_ref: deliveryNoteRef.trim() },
+      });
+      notify("ok", "Goods received and inventory updated.");
+      setReceiving(null);
+      await load();
+    } catch (e2) {
+      setError(e2.message || "Could not receive goods.");
+    } finally {
+      setReceivingBusy(false);
+    }
+  };
+
+  const orderColumns = [
+    { key: "id", label: "Order", render: (row) => `PO-${row.id}` },
+    { key: "supplier", label: "Supplier" },
+    { key: "status", label: "Status", render: (row) => title(row.status) },
+    { key: "expected_date", label: "Expected", render: (row) => row.expected_date || "—" },
+    { key: "created_by", label: "Created by" },
+    { key: "lines", label: "Products", render: (row) => row.lines.length },
+    { key: "total", label: "Order value", render: (row) => money(row.lines.reduce((sum, line) => sum + Number(line.quantity_ordered) * Number(line.unit_cost), 0)) },
+    { key: "actions", label: "Actions", render: (row) => row.status === "fully_received" || row.status === "cancelled" ? "—" : <button className="ghost small" onClick={() => startReceiving(row)}>Receive goods</button> },
+  ];
+
+  return (
+    <>
+      <section className="card">
+        <div className="list-head">
+          <div className="section-intro"><span className="eyebrow">SUPPLIERS</span><h2>Purchasing</h2><p>Create orders, receive deliveries, and update inventory from received quantities.</p></div>
+          <div className="list-tools">
+            <button className="secondary" onClick={() => setShowSupplierForm((value) => !value)}>{showSupplierForm ? "Cancel supplier" : "+ Add supplier"}</button>
+            <button className="primary" onClick={startOrder} disabled={!suppliers.length || !products.length}>+ New order</button>
+            <button className="ghost" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+          </div>
+        </div>
+        <p className="muted">{suppliers.length} active supplier{suppliers.length === 1 ? "" : "s"} · {orders.length} purchase order{orders.length === 1 ? "" : "s"}</p>
+        {showSupplierForm && (
+          <form className="form-grid" onSubmit={addSupplier}>
+            <Field label="Supplier name" value={supplierForm.name} onChange={(e) => setSupplierForm({ ...supplierForm, name: e.target.value })} required />
+            <Field label="Phone" type="tel" value={supplierForm.phone} onChange={(e) => setSupplierForm({ ...supplierForm, phone: e.target.value })} />
+            <Field label="Email" type="email" value={supplierForm.email} onChange={(e) => setSupplierForm({ ...supplierForm, email: e.target.value })} />
+            <button className="primary grid-full" disabled={supplierSaving}>{supplierSaving ? "Saving…" : "Save supplier"}</button>
+          </form>
+        )}
+        {error && !creating && !receiving && <p className="form-error">{error}</p>}
+      </section>
+      <section className="card">
+        <div className="section-intro"><h2>Purchase orders</h2></div>
+        {loading ? <p className="muted">Loading purchase orders…</p> : !orders.length ? <p className="muted">No purchase orders yet. Add a supplier, then create an order.</p> : <Table columns={orderColumns} rows={orders} />}
+      </section>
+
+      <Modal open={creating} title="Create purchase order" onClose={() => setCreating(false)} wide>
+        <form onSubmit={createOrder} className="form-grid">
+          <label className="field">
+            <span>Supplier</span>
+            <select value={draft.supplier} onChange={(e) => setDraft({ ...draft, supplier: e.target.value })} required>
+              <option value="" disabled>Select a supplier</option>
+              {suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}
+            </select>
+          </label>
+          <Field label="Expected delivery date" type="date" value={draft.expected_date} onChange={(e) => setDraft({ ...draft, expected_date: e.target.value })} />
+          <div className="grid-full">
+            <div className="list-head"><strong>Order lines</strong><button type="button" className="secondary" onClick={() => setDraft({ ...draft, lines: [...draft.lines, { product_id: String(products[0]?.id || ""), quantity_ordered: "1", unit_cost: products[0]?.cost_price || "0" }] })}>+ Add product</button></div>
+            {draft.lines.map((line, index) => (
+              <div className="form-grid" key={`${index}-${line.product_id}`}>
+                <label className="field">
+                  <span>Product</span>
+                  <select value={line.product_id} onChange={(e) => updateDraftLine(index, "product_id", e.target.value)} required>
+                    {products.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}
+                  </select>
+                </label>
+                <Field label="Quantity" type="number" min="1" step="1" value={line.quantity_ordered} onChange={(e) => updateDraftLine(index, "quantity_ordered", e.target.value)} required />
+                <Field label="Unit cost (KES)" type="number" min="0" step="0.01" value={line.unit_cost} onChange={(e) => updateDraftLine(index, "unit_cost", e.target.value)} required />
+                <button type="button" className="ghost small danger" onClick={() => setDraft({ ...draft, lines: draft.lines.filter((_, i) => i !== index) })} disabled={draft.lines.length <= 1}>Remove</button>
+              </div>
+            ))}
+          </div>
+          {error && <div className="form-error grid-full">{error}</div>}
+          <div className="modal-actions grid-full">
+            <button type="button" className="ghost" onClick={() => setCreating(false)}>Cancel</button>
+            <button type="submit" className="primary" disabled={savingOrder}>{savingOrder ? "Creating…" : "Create order"}</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal open={Boolean(receiving)} title={`Receive goods — PO-${receiving?.id || ""}`} onClose={() => setReceiving(null)} wide>
+        <form onSubmit={receiveOrder} className="form-grid">
+          <Field label="Delivery note reference" value={deliveryNoteRef} onChange={(e) => setDeliveryNoteRef(e.target.value)} />
+          {receiptLines.map((line, index) => (
+            <div className="form-grid grid-full" key={line.product_id}>
+              <div className="field"><span>Product</span><strong>{line.product}</strong><small>{line.quantity_remaining} remaining on order</small></div>
+              <Field label="Quantity received now" type="number" min="0" max={line.quantity_remaining} step="1" value={line.quantity_received} onChange={(e) => setReceiptLines((current) => current.map((item, i) => i === index ? { ...item, quantity_received: e.target.value } : item))} />
+            </div>
+          ))}
+          {error && <div className="form-error grid-full">{error}</div>}
+          <div className="modal-actions grid-full">
+            <button type="button" className="ghost" onClick={() => setReceiving(null)}>Cancel</button>
+            <button type="submit" className="primary" disabled={receivingBusy}>{receivingBusy ? "Receiving…" : "Record receipt"}</button>
+          </div>
+        </form>
+      </Modal>
+    </>
+  );
+}
+
 function SimpleList({ title: heading, endpoint, apiFetch, notify, columns }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1456,54 +2180,131 @@ function Table({ columns, rows }) {
 
 function Reports({ apiFetch, notify }) {
   const [data, setData] = useState(null);
+  const [period, setPeriod] = useState("daily");
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await apiFetch(ENDPOINTS.reports));
+      setData(await apiFetch(`${ENDPOINTS.salesReport}?period=${period}`));
     } catch (e) {
       notify("err", e.message || "Could not load reports.");
     } finally {
       setLoading(false);
     }
-  }, [apiFetch, notify]);
+  }, [apiFetch, notify, period]);
 
   useEffect(() => { load(); }, [load]);
 
+  const summary = data?.summary || {};
+
   return (
-    <section className="card">
+    <section className="reports-page">
+      <section className="card no-print">
       <div className="list-head">
         <div className="section-intro">
           <span className="eyebrow">INSIGHTS</span>
           <h2>Reports</h2>
+          <p>Paid, completed sales · {data ? `${data.start} to ${data.end}` : "Choose a period"}</p>
         </div>
         <div className="list-tools">
+          <label className="field report-period">
+            <span>Report period</span>
+            <select value={period} onChange={(e) => setPeriod(e.target.value)}>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </label>
           <button className="ghost" onClick={load} disabled={loading}>{loading ? "Loading…" : "Refresh"}</button>
+          <button className="primary" onClick={() => window.print()} disabled={!data}>Print report</button>
         </div>
       </div>
-      {!data ? (
-        <p className="muted">No report data yet.</p>
-      ) : (
+      </section>
+      {loading && !data ? <section className="card"><p className="muted">Preparing report…</p></section> : !data ? <section className="card"><p className="muted">No report data available.</p></section> : (
         <>
-          <div className="stat-grid">
-            {Object.entries(data)
-              .filter(([, v]) => typeof v === "number" || typeof v === "string")
-              .slice(0, 8)
-              .map(([k, v]) => (
-                <div key={k} className="stat">
-                  <span className="eyebrow">{title(k)}</span>
-                  <strong>{v}</strong>
-                </div>
-              ))}
-          </div>
-          <details className="raw">
-            <summary>Raw payload</summary>
-            <pre>{JSON.stringify(data, null, 2)}</pre>
-          </details>
+          <header className="report-print-head">
+            <span className="eyebrow">TENANT POS · SALES REPORT</span>
+            <h2>{title(data.period)} report</h2>
+            <p>{data.start} – {data.end}</p>
+          </header>
+          <section className="stat-grid report-summary">
+            <div className="stat"><span className="eyebrow">Paid revenue</span><strong>{money(summary.revenue)}</strong></div>
+            <div className="stat"><span className="eyebrow">Transactions</span><strong>{summary.transactions ?? 0}</strong></div>
+            <div className="stat"><span className="eyebrow">Average sale</span><strong>{money(summary.average_sale)}</strong></div>
+            <div className="stat"><span className="eyebrow">Cash / M-Pesa</span><strong>{money(summary.cash_revenue)} / {money(summary.mpesa_revenue)}</strong></div>
+          </section>
+          <section className="card report-chart-card">
+            <div className="section-intro"><h2>Revenue trend</h2><p>Paid sales by {data.bucket}</p></div>
+            <ReportChart series={data.series} valueKey="revenue" formatValue={(value) => money(value)} color="#2563eb" />
+          </section>
+          <section className="card report-chart-card">
+            <div className="section-intro"><h2>Transaction volume</h2><p>Completed paid transactions by {data.bucket}</p></div>
+            <ReportChart series={data.series} valueKey="transactions" formatValue={(value) => String(value)} color="#0f766e" />
+          </section>
+          <section className="card report-data-card">
+            <div className="section-intro"><h2>Period breakdown</h2></div>
+            <Table columns={[
+              { key: "label", label: "Period" },
+              { key: "revenue", label: "Paid revenue", render: (row) => money(row.revenue) },
+              { key: "transactions", label: "Transactions" },
+            ]} rows={data.series} />
+          </section>
         </>
       )}
     </section>
+  );
+}
+
+function ReportChart({ series, valueKey, formatValue, color }) {
+  const width = 800;
+  const height = 250;
+  const left = 58;
+  const right = 18;
+  const top = 18;
+  const bottom = 52;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const values = series.map((item) => Number(item[valueKey] || 0));
+  const maximum = Math.max(...values, 1);
+  const slotWidth = plotWidth / Math.max(series.length, 1);
+  const barWidth = Math.max(3, Math.min(28, slotWidth * 0.62));
+  const labelStep = Math.max(1, Math.ceil(series.length / 8));
+
+  return (
+    <div className="report-chart-scroll">
+      <svg className="report-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${valueKey} by period chart`}>
+        {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+          const y = top + plotHeight * (1 - fraction);
+          return (
+            <g key={fraction}>
+              <line x1={left} y1={y} x2={width - right} y2={y} stroke="#e5e7eb" />
+              <text x={left - 8} y={y + 4} textAnchor="end" className="chart-axis-label">
+                {formatValue(maximum * fraction)}
+              </text>
+            </g>
+          );
+        })}
+        {series.map((item, index) => {
+          const value = values[index];
+          const barHeight = (value / maximum) * plotHeight;
+          const x = left + slotWidth * index + (slotWidth - barWidth) / 2;
+          const y = top + plotHeight - barHeight;
+          return (
+            <g key={item.date}>
+              <title>{`${item.label}: ${formatValue(value)}`}</title>
+              <rect x={x} y={y} width={barWidth} height={Math.max(1, barHeight)} rx="3" fill={color} />
+              {(index % labelStep === 0 || index === series.length - 1) && (
+                <text x={left + slotWidth * index + slotWidth / 2} y={height - 20} textAnchor="middle" className="chart-axis-label">
+                  {item.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -1571,6 +2372,16 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
 .sidebar-foot strong { display: block; font-size: 13px; margin: 2px 0 3px; }
 .muted-small { color: #6b7280; font-size: 12px; }
 .muted { color: #6b7280; font-size: 13px; }
+.audit-changes { margin: 0; padding-left: 16px; min-width: 220px; font-size: 12px; line-height: 1.5; }
+.audit-changes li { overflow-wrap: anywhere; }
+.report-period { min-width: 150px; margin-top: 0; }
+.report-period select { min-height: 40px; padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #111827; }
+.report-print-head { display: none; }
+.report-chart-card, .report-data-card { margin-top: 14px; }
+.report-chart-scroll { overflow-x: auto; margin-top: 16px; }
+.report-chart { display: block; width: 100%; min-width: 620px; height: auto; }
+.chart-axis-label { fill: #6b7280; font-size: 10px; }
+.report-summary .stat strong { font-size: 18px; }
 
 /* cards */
 .card { padding: 20px; border: 1px solid #e5e7eb; border-radius: 14px; background: #fff; box-shadow: 0 6px 25px rgba(17, 24, 39, 0.045); }
@@ -1674,6 +2485,15 @@ button:disabled { cursor: not-allowed; opacity: 0.55; }
   .printable-receipt, .printable-receipt * { visibility: visible; }
   .printable-receipt { position: absolute; left: 0; top: 0; width: 80mm; margin: 0; padding: 8mm; border: 0; background: #fff; color: #000; box-shadow: none; }
   .receipt-print { display: none; }
+  .reports-page, .reports-page * { visibility: visible; }
+  .reports-page { position: absolute; inset: 0; width: 100%; padding: 0; color: #111827; }
+  .reports-page .no-print { display: none; }
+  .reports-page .report-print-head { display: block; margin-bottom: 14px; }
+  .reports-page .card { margin-top: 10px; padding: 12px; border: 1px solid #d1d5db; box-shadow: none; break-inside: avoid; }
+  .reports-page .report-chart { min-width: 0; width: 100%; }
+  .reports-page .table-wrap { overflow: visible; }
+  .reports-page table { font-size: 10px; }
+  .reports-page th, .reports-page td { padding: 5px; }
 }
 
 /* lists & tables */

@@ -6,7 +6,6 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db import connection
 from django.http import JsonResponse
-from django.utils.text import slugify
 from django.utils.deprecation import MiddlewareMixin
 
 from apps.tenants.models import Tenant
@@ -33,6 +32,7 @@ def set_tenant_schema(schema_name):
 
 class TenantResolutionMiddleware(MiddlewareMixin):
     def process_request(self, request):
+        set_public_schema()
         request.tenant = None
         path = request.path
         if path in PUBLIC_PATHS:
@@ -52,23 +52,22 @@ class TenantResolutionMiddleware(MiddlewareMixin):
             return JsonResponse({"detail": "Invalid or expired token."}, status=403)
 
         tenant_schema = payload.get("tenant_schema")
-        if not tenant_schema or tenant_schema == settings.PUBLIC_SCHEMA_NAME:
-            user_id = payload.get("user_id")
-            if not user_id:
-                return JsonResponse({"detail": "Token is missing a tenant and user claim."}, status=403)
-
-            set_public_schema()
-            User = get_user_model()
-            try:
-                user = User.objects.get(pk=user_id, is_active=True)
-            except User.DoesNotExist:
-                return JsonResponse({"detail": "Token user not found or inactive."}, status=403)
-
-            tenant_schema = user.tenant_schema or slugify(user.full_name).replace("-", "_")
-            if not tenant_schema:
-                return JsonResponse({"detail": "Could not determine a tenant for this account."}, status=403)
-
+        user_id = payload.get("user_id") or payload.get("user_pk")
+        if not user_id:
+            return JsonResponse({"detail": "Token is missing a user claim."}, status=403)
         set_public_schema()
+        User = get_user_model()
+        try:
+            user = User.objects.get(pk=user_id, is_active=True)
+        except (User.DoesNotExist, ValueError, TypeError):
+            return JsonResponse({"detail": "Token user not found or inactive."}, status=403)
+
+        assigned_schema = user.tenant_schema
+        if not assigned_schema:
+            return JsonResponse({"detail": "This account is not assigned to a tenant workspace."}, status=403)
+        if tenant_schema and tenant_schema != settings.PUBLIC_SCHEMA_NAME and tenant_schema != assigned_schema:
+            return JsonResponse({"detail": "Token tenant does not match this user account."}, status=403)
+        tenant_schema = assigned_schema
 
         try:
             tenant = Tenant.objects.get(schema_name=tenant_schema)

@@ -12,7 +12,7 @@ from core.api import required
 
 
 def sale_data(sale):
-    return {"id": str(sale.id), "receipt_number": sale.receipt_number, "created_at": sale.created_at, "status": sale.status, "payment_status": sale.payment_status, "payment_method": sale.payment_method, "subtotal": str(sale.subtotal), "discount_amount": str(sale.discount_amount), "tax_amount": str(sale.tax_amount), "total_amount": str(sale.total_amount), "cashier": str(sale.cashier_id), "till_session": sale.till_session_id}
+    return {"id": str(sale.id), "receipt_number": sale.receipt_number, "created_at": sale.created_at, "status": sale.status, "payment_status": sale.payment_status, "payment_method": sale.payment_method, "subtotal": str(sale.subtotal), "discount_amount": str(sale.discount_amount), "tax_amount": str(sale.tax_amount), "total_amount": str(sale.total_amount), "cashier": str(sale.cashier_id), "till_session": str(sale.till_session.public_id)}
 
 
 def client_ip(request):
@@ -41,7 +41,7 @@ class SaleListCreateView(APIView):
                     raise ValueError
             except (TypeError, ValueError):
                 return Response({"detail": "Sale quantities must be positive whole numbers."}, status=400)
-        till_session = TillSession.objects.filter(pk=request.data["till_session"], closed_at__isnull=True).first()
+        till_session = TillSession.objects.filter(public_id=request.data["till_session"], closed_at__isnull=True).first()
         if not till_session:
             return Response({"detail": "An open till session is required."}, status=400)
         customer_phone = str(request.data.get("customer") or "").strip()
@@ -119,7 +119,7 @@ class TillOpenView(APIView):
             return error
         existing = TillSession.objects.filter(terminal_id=request.data["terminal_id"], closed_at__isnull=True).first()
         if existing:
-            return Response({"id": existing.id, "terminal_id": existing.terminal_id, "opening_float": str(existing.opening_float), "open": True, "already_open": True}, status=200)
+            return Response({"id": str(existing.public_id), "terminal_id": existing.terminal_id, "opening_float": str(existing.opening_float), "open": True, "already_open": True}, status=200)
         try:
             session = open_till(request.user, request.data["terminal_id"], request.data.get("float_amount", 0))
         except ValueError as exc:
@@ -128,11 +128,11 @@ class TillOpenView(APIView):
             request.user,
             "open",
             "TillSession",
-            session.id,
+            session.public_id,
             {"terminal_id": session.terminal_id, "opening_float": str(session.opening_float)},
             client_ip(request),
         )
-        return Response({"id": session.id, "terminal_id": session.terminal_id, "opening_float": str(session.opening_float)}, status=201)
+        return Response({"id": str(session.public_id), "terminal_id": session.terminal_id, "opening_float": str(session.opening_float)}, status=201)
 
 
 class TillCurrentView(APIView):
@@ -142,7 +142,7 @@ class TillCurrentView(APIView):
         session = TillSession.objects.filter(closed_at__isnull=True).order_by("-opened_at").first()
         if not session:
             return Response({"id": None, "open": False})
-        return Response({"id": session.id, "open": True, "terminal_id": session.terminal_id, "opening_float": str(session.opening_float), "opened_at": session.opened_at})
+        return Response({"id": str(session.public_id), "open": True, "terminal_id": session.terminal_id, "opening_float": str(session.opening_float), "opened_at": session.opened_at})
 
 
 class TillHistoryView(APIView):
@@ -167,7 +167,7 @@ class TillHistoryView(APIView):
 
         return Response([
             {
-                "id": session.id,
+                "id": str(session.public_id),
                 "terminal_id": session.terminal_id,
                 "status": "closed" if session.closed_at else "open",
                 "opened_at": session.opened_at,
@@ -196,7 +196,7 @@ class TillCloseView(APIView):
         error = required(request.data, "session_id", "counted_cash")
         if error:
             return error
-        session = TillSession.objects.filter(pk=request.data["session_id"], closed_at__isnull=True).first()
+        session = TillSession.objects.filter(public_id=request.data["session_id"], closed_at__isnull=True).first()
         if not session:
             return Response({"detail": "Open till session not found."}, status=404)
         session = close_till(
@@ -208,11 +208,11 @@ class TillCloseView(APIView):
             request.user,
             "close",
             "TillSession",
-            session.id,
+            session.public_id,
             {"terminal_id": session.terminal_id, "counted_cash": str(session.counted_cash), "expected_cash": str(session.expected_cash), "variance": str(session.variance)},
             client_ip(request),
         )
-        return Response({"id": session.id, "closed_at": session.closed_at, "expected_cash": str(session.expected_cash), "variance": str(session.variance)})
+        return Response({"id": str(session.public_id), "closed_at": session.closed_at, "expected_cash": str(session.expected_cash), "variance": str(session.variance)})
 
 
 class SaleVoidView(APIView):

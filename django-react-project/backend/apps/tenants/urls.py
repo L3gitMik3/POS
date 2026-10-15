@@ -10,7 +10,7 @@ class TenantListView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        tenants = Tenant.objects.order_by("name")
+        tenants = Tenant.objects.filter(schema_name=request.tenant.schema_name)
         return Response([{"schema_name": item.schema_name, "slug": item.slug, "name": item.name, "status": item.status, "created_on": item.created_on} for item in tenants])
 
 urlpatterns = [
